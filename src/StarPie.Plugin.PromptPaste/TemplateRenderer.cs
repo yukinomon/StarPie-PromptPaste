@@ -29,9 +29,74 @@ internal static class TemplateRenderer
 
     private static readonly char[] LineBreakChars = { '\r', '\n' };
 
-    /// <summary>模板是否包含 <c>{selection}</c>（决定是否需要模拟 Ctrl+C 抓取选区）。</summary>
+    /// <summary>模板是否包含 <c>{selection}</c>。</summary>
     internal static bool ContainsSelection(string? template) =>
         template is not null && template.Contains(SelectionToken, StringComparison.Ordinal);
+
+    /// <summary>模板是否包含 <c>{clipboard}</c>。</summary>
+    internal static bool ContainsClipboard(string? template) =>
+        template is not null && template.Contains(ClipboardToken, StringComparison.Ordinal);
+
+    /// <summary>
+    /// 这次执行是否需要模拟 Ctrl+C 抓取选区：模板里写了 <c>{selection}</c>，
+    /// 或者用户选了「末尾附带：当前选中的文字」。
+    /// </summary>
+    internal static bool RequiresSelection(string? template, AppendMode appendMode) =>
+        appendMode == AppendMode.Selection || ContainsSelection(template);
+
+    /// <summary>
+    /// 在正文末尾拼接一段附带内容。空串 / 纯空白视为「没有内容」，原样返回，不产生空行；
+    /// 拼接前先去掉附带内容开头的换行，避免与分隔换行叠成空行。
+    /// 返回的文本尚未做行尾统一（由 <see cref="NormalizeLineEndings"/> 负责）。
+    /// </summary>
+    internal static string AppendTail(string body, string? chunk)
+    {
+        ArgumentNullException.ThrowIfNull(body);
+        if (string.IsNullOrWhiteSpace(chunk))
+        {
+            return body;
+        }
+
+        string tail = chunk.TrimStart('\r', '\n');
+        if (tail.Length == 0)
+        {
+            return body;
+        }
+
+        // 正文已经以换行结尾时不再多插一个空行
+        bool bodyEndsWithBreak =
+            body.EndsWith("\r\n", StringComparison.Ordinal) ||
+            body.EndsWith("\n", StringComparison.Ordinal) ||
+            body.EndsWith("\r", StringComparison.Ordinal);
+
+        return bodyEndsWithBreak ? body + tail : body + "\r\n" + tail;
+    }
+
+    /// <summary>
+    /// 渲染 + 按 <paramref name="appendMode"/> 附带 + 统一 CRLF 的完整流程（纯函数，便于单元测试）。
+    /// <para>
+    /// 正文里已经手写了 <c>{selection}</c> / <c>{clipboard}</c> 时，同一份内容已经进入正文，
+    /// 不再在末尾重复拼接，避免同一段文字出现两次。
+    /// </para>
+    /// </summary>
+    internal static string ComposeBody(
+        string template, string? clipboard, string? selection, DateTime now, AppendMode appendMode)
+    {
+        ArgumentNullException.ThrowIfNull(template);
+
+        string body = Render(template, clipboard, selection, now);
+
+        if (appendMode == AppendMode.Selection && !ContainsSelection(template))
+        {
+            body = AppendTail(body, selection);
+        }
+        else if (appendMode == AppendMode.Clipboard && !ContainsClipboard(template))
+        {
+            body = AppendTail(body, clipboard);
+        }
+
+        return NormalizeLineEndings(body);
+    }
 
     /// <summary>
     /// 一次性替换全部内置占位符。

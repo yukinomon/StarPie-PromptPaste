@@ -137,6 +137,90 @@ Check("恢复开关 False", ParameterRules.TryParseRestoreFlag("False", out bool
 Check("恢复开关 true", ParameterRules.TryParseRestoreFlag("true", out bool r2) && r2);
 Check("恢复开关 yes 被拒", !ParameterRules.TryParseRestoreFlag("yes", out _));
 
+Console.WriteLine("[ParameterRules.TryParseAppendMode]");
+Check("appendMode 未填写 → none", ParameterRules.TryParseAppendMode(null, out AppendMode m0) && m0 == AppendMode.None);
+Check("appendMode 空白 → none", ParameterRules.TryParseAppendMode("   ", out AppendMode m0b) && m0b == AppendMode.None);
+Check("appendMode none", ParameterRules.TryParseAppendMode("none", out AppendMode m1) && m1 == AppendMode.None);
+Check("appendMode selection", ParameterRules.TryParseAppendMode("selection", out AppendMode m2) && m2 == AppendMode.Selection);
+Check("appendMode clipboard", ParameterRules.TryParseAppendMode("clipboard", out AppendMode m3) && m3 == AppendMode.Clipboard);
+Check("appendMode 忽略大小写", ParameterRules.TryParseAppendMode("Selection", out AppendMode m4) && m4 == AppendMode.Selection);
+Check("appendMode 忽略首尾空白", ParameterRules.TryParseAppendMode(" clipboard\n", out AppendMode m5) && m5 == AppendMode.Clipboard);
+Check("appendMode 非法值 everything 被拒", !ParameterRules.TryParseAppendMode("everything", out _));
+Check("appendMode 非法值 file 被拒", !ParameterRules.TryParseAppendMode("file", out _));
+Check("appendMode 非法值 none2 被拒", !ParameterRules.TryParseAppendMode("none2", out _));
+Check("appendMode 默认值与 ParameterOption 取值一致",
+    ParameterRules.DefaultAppendMode == AppendMode.None &&
+    ParameterRules.AppendModeNone == "none" &&
+    ParameterRules.AppendModeSelection == "selection" &&
+    ParameterRules.AppendModeClipboard == "clipboard");
+
+Console.WriteLine("[TemplateRenderer.RequiresSelection]");
+Check("默认 none 且无 {selection} → 不抓选区", !TemplateRenderer.RequiresSelection("hi", AppendMode.None));
+Check("模板含 {selection} → 抓选区", TemplateRenderer.RequiresSelection("hi {selection}", AppendMode.None));
+Check("appendMode=selection 即使模板没有占位符 → 也抓选区",
+    TemplateRenderer.RequiresSelection("hi", AppendMode.Selection));
+Check("appendMode=clipboard 且无 {selection} → 不抓选区",
+    !TemplateRenderer.RequiresSelection("hi", AppendMode.Clipboard));
+
+Console.WriteLine("[TemplateRenderer.ComposeBody / appendMode]");
+Equal("none：只贴正文", "第一行\r\n第二行",
+    TemplateRenderer.ComposeBody("第一行\n第二行", "CLIP", "SEL", now, AppendMode.None));
+
+Equal("selection：正文末尾换行附带选区",
+    $"总结 {Date}\r\n选中内容",
+    TemplateRenderer.ComposeBody("总结 {date}", "CLIP", "选中内容", now, AppendMode.Selection));
+
+Equal("selection：没有选中文字时不加空行",
+    $"总结 {Date}",
+    TemplateRenderer.ComposeBody("总结 {date}", "CLIP", "", now, AppendMode.Selection));
+
+Equal("selection：选区只有空白时不加空行",
+    $"总结 {Date}",
+    TemplateRenderer.ComposeBody("总结 {date}", "CLIP", " \r\n\t ", now, AppendMode.Selection));
+
+Equal("clipboard：正文末尾换行附带剪贴板",
+    "翻译下面内容：\r\n剪贴板文字",
+    TemplateRenderer.ComposeBody("翻译下面内容：", "剪贴板文字", "", now, AppendMode.Clipboard));
+
+Equal("clipboard：剪贴板没有文本时不加空行", "翻译下面内容：",
+    TemplateRenderer.ComposeBody("翻译下面内容：", null, "", now, AppendMode.Clipboard));
+
+Equal("clipboard：正文里已手写 {clipboard} → 不重复拼接",
+    "资料：剪贴板文字",
+    TemplateRenderer.ComposeBody("资料：{clipboard}", "剪贴板文字", "", now, AppendMode.Clipboard));
+
+Equal("selection：正文里已手写 {selection} → 不重复拼接",
+    "问：选中内容",
+    TemplateRenderer.ComposeBody("问：{selection}", "CLIP", "选中内容", now, AppendMode.Selection));
+
+Equal("正文含 {selection} 且 appendMode=clipboard → 选区就地替换、剪贴板附在末尾各一次",
+    "问：选中内容\r\n剪贴板文字",
+    TemplateRenderer.ComposeBody("问：{selection}", "剪贴板文字", "选中内容", now, AppendMode.Clipboard));
+
+Equal("正文含 {clipboard} 且 appendMode=selection → 剪贴板就地替换、选区附在末尾各一次",
+    "资料：剪贴板文字\r\n选中内容",
+    TemplateRenderer.ComposeBody("资料：{clipboard}", "剪贴板文字", "选中内容", now, AppendMode.Selection));
+
+Equal("正文已以换行结尾时不叠出空行",
+    "第一行\r\n选中内容",
+    TemplateRenderer.ComposeBody("第一行\n", "", "选中内容", now, AppendMode.Selection));
+
+Equal("附带内容开头的换行被吃掉，避免叠出空行",
+    "第一行\r\n选中内容",
+    TemplateRenderer.ComposeBody("第一行", "", "\n选中内容", now, AppendMode.Selection));
+
+Equal("附带内容里的 LF 一并统一成 CRLF",
+    "开头\r\n一\r\n二",
+    TemplateRenderer.ComposeBody("开头", "", "一\n二", now, AppendMode.Selection));
+
+Equal("附带内容本身就含占位符字样时不再二次替换",
+    "开头\r\n{date}",
+    TemplateRenderer.ComposeBody("开头", "", "{date}", now, AppendMode.Selection));
+
+Equal("显式占位符 + 空选区 + appendMode=selection → 保持单次替换，不乱插行",
+    "问：",
+    TemplateRenderer.ComposeBody("问：{selection}", "", "", now, AppendMode.Selection));
+
 Console.WriteLine();
 Console.WriteLine($"Result: {passed} passed, {failed} failed.");
 return failed == 0 ? 0 : 1;

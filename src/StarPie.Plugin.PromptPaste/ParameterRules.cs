@@ -12,6 +12,7 @@ internal static class ParameterRules
     internal const string TemplateKey = "template";
     internal const string RestoreClipboardKey = "restoreClipboard";
     internal const string RestoreDelayKey = "restoreDelayMs";
+    internal const string AppendModeKey = "appendMode";
 
     /// <summary>模板 UTF-8 字节上限（StarPie 单参数 8 KiB 上限）。</summary>
     internal const int MaxTemplateUtf8Bytes = 8 * 1024;
@@ -54,6 +55,42 @@ internal static class ParameterRules
         return true;
     }
 
+    // ---- appendMode（粘贴时顺便附带）----------------------------------------
+
+    /// <summary>「粘贴时顺便附带」的选项值（与 ParameterOption.Value 完全一致）。</summary>
+    internal const string AppendModeNone = "none";
+    internal const string AppendModeSelection = "selection";
+    internal const string AppendModeClipboard = "clipboard";
+
+    internal const AppendMode DefaultAppendMode = AppendMode.None;
+
+    /// <summary>
+    /// 解析「粘贴时顺便附带」。未填写视为 <see cref="AppendMode.None"/>；
+    /// 只接受 none / selection / clipboard（忽略大小写与首尾空白），其余一律视为非法。
+    /// </summary>
+    internal static bool TryParseAppendMode(string? raw, out AppendMode mode)
+    {
+        mode = DefaultAppendMode;
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return true;
+        }
+
+        switch (raw.Trim().ToLowerInvariant())
+        {
+            case AppendModeNone:
+                return true;
+            case AppendModeSelection:
+                mode = AppendMode.Selection;
+                return true;
+            case AppendModeClipboard:
+                mode = AppendMode.Clipboard;
+                return true;
+            default:
+                return false;
+        }
+    }
+
     /// <summary>解析「粘贴后恢复原剪贴板」。未填写视为默认值 true。</summary>
     internal static bool TryParseRestoreFlag(string? raw, out bool restore)
     {
@@ -65,4 +102,17 @@ internal static class ParameterRules
 
         return bool.TryParse(raw.Trim(), out restore);
     }
+}
+
+/// <summary>「粘贴时顺便附带」的三种模式。</summary>
+internal enum AppendMode
+{
+    /// <summary>不附带，只粘贴提示词正文。</summary>
+    None = 0,
+
+    /// <summary>在正文末尾附带当前选中的文字。</summary>
+    Selection = 1,
+
+    /// <summary>在正文末尾附带触发前的剪贴板纯文本。</summary>
+    Clipboard = 2,
 }

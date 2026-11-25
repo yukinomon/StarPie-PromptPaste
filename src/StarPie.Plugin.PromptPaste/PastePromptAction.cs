@@ -56,6 +56,38 @@ internal sealed class PastePromptAction : IActionContribution
             },
             new()
             {
+                Key = ParameterRules.AppendModeKey,
+                Label = I18nKeys.ZhAppendLabel,
+                LabelKey = I18nKeys.AppendLabel,
+                Type = ParameterFieldType.Enum,
+                Required = false,
+                DefaultValue = ParameterRules.AppendModeNone,
+                HelpText = I18nKeys.ZhAppendHelp,
+                HelpTextKey = I18nKeys.AppendHelp,
+                Options = new List<ParameterOption>
+                {
+                    new()
+                    {
+                        Value = ParameterRules.AppendModeNone,
+                        Label = I18nKeys.ZhAppendNoneLabel,
+                        LabelKey = I18nKeys.AppendNoneLabel,
+                    },
+                    new()
+                    {
+                        Value = ParameterRules.AppendModeSelection,
+                        Label = I18nKeys.ZhAppendSelectionLabel,
+                        LabelKey = I18nKeys.AppendSelectionLabel,
+                    },
+                    new()
+                    {
+                        Value = ParameterRules.AppendModeClipboard,
+                        Label = I18nKeys.ZhAppendClipboardLabel,
+                        LabelKey = I18nKeys.AppendClipboardLabel,
+                    },
+                }.AsReadOnly(),
+            },
+            new()
+            {
                 Key = ParameterRules.RestoreClipboardKey,
                 Label = I18nKeys.ZhRestoreLabel,
                 LabelKey = I18nKeys.RestoreLabel,
@@ -101,6 +133,11 @@ internal sealed class PastePromptAction : IActionContribution
                 T(I18nKeys.ErrorTemplateTooLarge, I18nKeys.ZhErrorTemplateTooLarge),
                 utf8Bytes,
                 ParameterRules.MaxTemplateUtf8Bytes);
+        }
+
+        if (!ParameterRules.TryParseAppendMode(Read(parameters, ParameterRules.AppendModeKey), out _))
+        {
+            return T(I18nKeys.ErrorAppendInvalid, I18nKeys.ZhErrorAppendInvalid);
         }
 
         if (!ParameterRules.TryParseRestoreFlag(Read(parameters, ParameterRules.RestoreClipboardKey), out _))
@@ -151,24 +188,25 @@ internal sealed class PastePromptAction : IActionContribution
             }
 
             string template = input.Parameter(ParameterRules.TemplateKey)!;
+            ParameterRules.TryParseAppendMode(input.Parameter(ParameterRules.AppendModeKey), out AppendMode appendMode);
             ParameterRules.TryParseRestoreFlag(input.Parameter(ParameterRules.RestoreClipboardKey), out restoreEnabled);
             ParameterRules.TryParseRestoreDelay(input.Parameter(ParameterRules.RestoreDelayKey), out int restoreDelayMs);
 
             // ② 先快照原剪贴板（必须早于选区抓取，否则 {clipboard} 会被 Ctrl+C 覆盖）
             snapshot = _clipboard.TakeSnapshot();
 
-            // ③ 模板含 {selection} 才模拟 Ctrl+C 抓取选区
+            // ③ 模板里写了 {selection}，或选了「末尾附带：当前选中的文字」，都要模拟 Ctrl+C 抓取选区
             string selection = string.Empty;
             bool selectionMissing = false;
-            if (TemplateRenderer.ContainsSelection(template))
+            if (TemplateRenderer.RequiresSelection(template, appendMode))
             {
                 selection = await _clipboard.CaptureSelectionAsync(snapshot, cancellationToken).ConfigureAwait(false);
                 selectionMissing = selection.Length == 0;
             }
 
-            // ④ 单遍替换 4 个占位符，并统一为 CRLF 换行
-            string text = TemplateRenderer.NormalizeLineEndings(
-                TemplateRenderer.Render(template, snapshot.Text, selection, DateTime.Now));
+            // ④ 单遍替换 4 个占位符 → 按 appendMode 在末尾附带 → 统一为 CRLF 换行
+            string text = TemplateRenderer.ComposeBody(
+                template, snapshot.Text, selection, DateTime.Now, appendMode);
 
             cancellationToken.ThrowIfCancellationRequested();
 

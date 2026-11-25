@@ -37,9 +37,12 @@ A StarPie community plugin: bind a prompt to a wheel slice, and it is pasted int
 
 | 参数 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| 提示词模板 `template` | 多行文本（必填） | 空 | 支持多行与上面 4 个变量，UTF-8 不超过 8 KiB |
+| 要粘贴的提示词 `template` | 多行文本（必填） | 空 | 支持多行与上面 4 个变量，UTF-8 不超过 8 KiB |
+| 粘贴时顺便附带 `appendMode` | 枚举 | `none` | `none` 只贴正文；`selection` 末尾附带当前选中的文字；`clipboard` 末尾附带剪贴板里的内容 |
 | 粘贴后恢复原剪贴板 `restoreClipboard` | 开关 | 开 | 只恢复纯文本 |
 | 恢复延迟 `restoreDelayMs` | 数字 | 200 | 50～2000 ms；目标程序粘贴较慢时调大 |
+
+**`appendMode` 的拼接规则**：附带的文字接在渲染后正文的末尾，用一个换行隔开；选区 / 剪贴板为空（或只有空白）时不拼接、不产生空行。如果正文里已经手写了 `{selection}` 或 `{clipboard}`，同一份内容只出现一次——占位符就地替换，末尾不再重复附带。
 
 模板示例：
 
@@ -148,9 +151,12 @@ StarPie 官方自检需要真实宿主，CI 里不跑，请下载产物后在本
 
 | Parameter | Type | Default | Notes |
 | --- | --- | --- | --- |
-| Prompt template `template` | Multiline text (required) | empty | Multi-line, supports the 4 variables, up to 8 KiB in UTF-8 |
+| Prompt text `template` | Multiline text (required) | empty | Multi-line, supports the 4 variables, up to 8 KiB in UTF-8 |
+| Append after prompt `appendMode` | Enum | `none` | `none` pastes the prompt only; `selection` appends the selected text; `clipboard` appends the clipboard text |
 | Restore clipboard after pasting `restoreClipboard` | Toggle | on | Plain text only |
 | Restore delay `restoreDelayMs` | Number | 200 | 50–2000 ms; increase it for apps that paste slowly |
+
+**How `appendMode` joins text**: the appended text goes after the rendered body with one line break. An empty (or whitespace-only) selection/clipboard appends nothing, so no blank lines appear. If the template already contains `{selection}` or `{clipboard}`, that content appears only once: the placeholder is substituted in place and the end is not appended again.
 
 ### Install
 
