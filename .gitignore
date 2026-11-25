@@ -1,0 +1,10 @@
+bin/
+obj/
+dist/
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.swp
+TestResults/

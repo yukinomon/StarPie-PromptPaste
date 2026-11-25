@@ -1,0 +1,87 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    StarPie-PromptPaste（提示词快贴）社区插件
+    ==================================================================
+    社区插件红线（plugin/docs/plugin-development-quickstart.md 第 5 节）：
+      1. TargetFramework 不得高于宿主：固定 net8.0-windows，禁止 net9.0；
+      2. SDK 引用必须 <Private>false</Private>，产物中不得出现 StarPie.Plugin.Abstractions.dll；
+      3. 只引用 SDK 与 BCL：禁止引用 StarPie.dll / WinPieGestures.*，零 NuGet 依赖。
+    AssemblyMetadata 与版本号必须与同目录 plugin.json 完全一致。
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>12.0</LangVersion>
+
+    <AssemblyName>StarPie.Plugin.PromptPaste</AssemblyName>
+    <RootNamespace>StarPie.Plugin.PromptPaste</RootNamespace>
+
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <InformationalVersion>1.0.0</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+
+    <Authors>yukinomon</Authors>
+    <Company>yukinomon</Company>
+    <Product>Prompt Paste</Product>
+    <Description>按轮盘扇区一键粘贴预设提示词，支持 {clipboard}、{selection}、{date}、{time} 变量，粘贴后自动恢复原剪贴板文本。</Description>
+    <Copyright>Copyright (c) 2026 yukinomon</Copyright>
+
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+
+    <!-- 产物保持干净：不生成 deps.json，Release 不输出 pdb -->
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <IsPackable>false</IsPackable>
+
+    <!--
+      SDK 工程路径（可覆盖）：默认指向与本仓库并列的 StarPie 官方仓库，
+      即 <工作区>\StarPie\plugin\sdk\StarPie.Plugin.Abstractions\StarPie.Plugin.Abstractions.csproj。
+      外部贡献者可用 dotnet build -p:StarPieAbstractionsProject=<路径> 覆盖。
+    -->
+    <StarPieAbstractionsProject Condition="'$(StarPieAbstractionsProject)' == ''">$(MSBuildThisFileDirectory)..\..\..\StarPie\plugin\sdk\StarPie.Plugin.Abstractions\StarPie.Plugin.Abstractions.csproj</StarPieAbstractionsProject>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+  </PropertyGroup>
+
+  <ItemGroup Condition="Exists('$(StarPieAbstractionsProject)')">
+    <ProjectReference Include="$(StarPieAbstractionsProject)">
+      <Private>false</Private>
+    </ProjectReference>
+  </ItemGroup>
+
+  <!-- 裸 DLL 分发时的静态识别兜底。值必须与 plugin.json 保持一致。 -->
+  <ItemGroup>
+    <AssemblyMetadata Include="StarPiePluginId" Value="io.github.yukinomon.promptpaste" />
+    <AssemblyMetadata Include="StarPiePluginName" Value="提示词快贴" />
+    <AssemblyMetadata Include="StarPiePluginCapabilities" Value="Clipboard,InputSimulation,Ui" />
+    <AssemblyMetadata Include="StarPiePluginLicense" Value="MIT" />
+    <AssemblyMetadata Include="StarPiePluginHomepage" Value="https://github.com/yukinomon/StarPie-PromptPaste" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="plugin.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- 找不到 SDK 工程时给出明确提示，而不是一串编译错误 -->
+  <Target Name="PromptPasteCheckSdkProject" BeforeTargets="BeforeBuild">
+    <Error Condition="!Exists('$(StarPieAbstractionsProject)')"
+           Text="StarPie SDK project not found: $(StarPieAbstractionsProject). Clone https://github.com/Star-Pie/StarPie next to this repository (same parent folder), or pass -p:StarPieAbstractionsProject=&lt;path to StarPie.Plugin.Abstractions.csproj&gt;." />
+  </Target>
+
+  <!-- 红线守卫：产物里出现第二份 SDK DLL 时直接让构建失败（不要靠事后删文件掩盖） -->
+  <Target Name="PromptPasteCheckOutput" AfterTargets="Build">
+    <Error Condition="Exists('$(OutDir)StarPie.Plugin.Abstractions.dll')"
+           Text="Red line violated: $(OutDir)StarPie.Plugin.Abstractions.dll was copied to the output. The SDK ProjectReference must keep &lt;Private&gt;false&lt;/Private&gt;." />
+    <Error Condition="Exists('$(OutDir)StarPie.dll')"
+           Text="Red line violated: StarPie.dll found in the output. Community plugins must not reference the host executable." />
+  </Target>
+
+</Project>

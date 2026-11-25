@@ -1,0 +1,114 @@
+# StarPie-PromptPaste CI
+#
+# 每次 push / PR：在 Windows 云端机器上跑单元测试 → Release 编译 → 红线检查 → 打 ZIP，
+#                 产物上传为 Actions Artifact（在本次运行页面底部下载）。
+# 推送 v* 标签：额外校验标签与 plugin.json 版本一致，并自动创建 GitHub Release、附带 ZIP 与 SHA256。
+#
+# 只使用 GitHub 官方 actions；插件本身仍保持零 NuGet 依赖。
+# StarPie 官方自检需要真实宿主（StarPie.exe），不在 CI 中运行，请在本机执行。
+
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  # 编译所依赖的 StarPie 宿主 / SDK 版本（与 plugin.json 的 apiVersion 1.13、minHostVersion 2.0.0 对应）
+  STARPIE_REF: v2.0.0
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      # 目录布局与本地一致：<工作区>\StarPie-PromptPaste 与 <工作区>\StarPie 并列，
+      # csproj 的默认 SDK 路径 ..\..\..\StarPie\plugin\sdk\... 无需覆盖。
+      - name: Checkout plugin
+        uses: actions/checkout@v4
+        with:
+          path: StarPie-PromptPaste
+
+      - name: Checkout StarPie SDK (${{ env.STARPIE_REF }})
+        uses: actions/checkout@v4
+        with:
+          repository: Star-Pie/StarPie
+          ref: ${{ env.STARPIE_REF }}
+          path: StarPie
+          sparse-checkout: plugin/sdk
+          submodules: false
+
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Verify tag matches plugin.json version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        working-directory: StarPie-PromptPaste
+        run: |
+          $version = (Get-Content src/StarPie.Plugin.PromptPaste/plugin.json -Raw -Encoding UTF8 | ConvertFrom-Json).version
+          if ("v$version" -ne $env:GITHUB_REF_NAME) {
+            Write-Error "Tag $env:GITHUB_REF_NAME does not match plugin.json version v$version."
+            exit 1
+          }
+          Write-Host "Tag $env:GITHUB_REF_NAME matches plugin.json."
+
+      - name: Test, build, check red lines, package
+        shell: pwsh
+        working-directory: StarPie-PromptPaste
+        run: ./scripts/package-release.ps1
+
+      - name: Summary
+        if: success()
+        shell: pwsh
+        working-directory: StarPie-PromptPaste
+        run: |
+          $sha = Get-ChildItem dist/*.sha256 | Get-Content
+          $out = Get-ChildItem src/StarPie.Plugin.PromptPaste/bin -Recurse -File | ForEach-Object { '- `' + $_.Name + '`' }
+          @(
+            '## StarPie-PromptPaste build'
+            ''
+            '**Package SHA256**'
+            ''
+            '```'
+            $sha
+            '```'
+            ''
+            '**Build output** (must not contain `StarPie.Plugin.Abstractions.dll`)'
+            ''
+            $out
+          ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: StarPie-PromptPaste-build-${{ github.run_number }}
+          if-no-files-found: error
+          path: |
+            StarPie-PromptPaste/dist/*.zip
+            StarPie-PromptPaste/dist/*.sha256
+            StarPie-PromptPaste/dist/RELEASE_NOTES.md
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        working-directory: StarPie-PromptPaste
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $assets = @(Get-ChildItem dist/*.zip, dist/*.sha256 | ForEach-Object FullName)
+          gh release create $env:GITHUB_REF_NAME @assets `
+            --repo $env:GITHUB_REPOSITORY `
+            --title "StarPie-PromptPaste $env:GITHUB_REF_NAME" `
+            --notes-file dist/RELEASE_NOTES.md
