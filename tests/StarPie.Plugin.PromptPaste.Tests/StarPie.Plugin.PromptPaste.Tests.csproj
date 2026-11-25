@@ -2,8 +2,8 @@
 
   <!--
     纯 BCL 逻辑测试：不引用 StarPie SDK、不使用任何 NuGet 测试框架（保持零依赖红线）。
-    直接链接插件里与宿主无关的两个源文件编译，运行：
-      dotnet run --project tests/StarPie.Plugin.PromptPaste.Tests -c Release
+    直接链接插件里与宿主无关的两个源文件编译。在仓库根目录运行：
+      cd tests/StarPie.Plugin.PromptPaste.Tests; dotnet run -c Release
     退出码 0 = 全部通过。
   -->
 
